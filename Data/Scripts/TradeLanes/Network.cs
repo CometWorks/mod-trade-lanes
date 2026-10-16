@@ -26,6 +26,8 @@ using VRageMath;
 // - SeatUnlockRequest: a client whose pilot is out of the seat anyway asks the
 //   server to lift that block, only the server can.
 // - Command: an admin's /tradelanes chat command, run on the server.
+// - Detonate: a client ran a warhead's Detonate, the server drops the ship out
+//   of its lane first if it is in one (DropOut.cs).
 //
 // On a cluster a node also sends the lanes it knows from the lane registry
 // (Registry.cs), whose computers are loaded elsewhere or not at all.
@@ -42,6 +44,7 @@ namespace Psycho.TradeLanes
         SeatLock,
         SeatUnlockRequest,
         Command,
+        Detonate,
     }
 
     public enum GateEffectKind
@@ -361,6 +364,15 @@ namespace Psycho.TradeLanes
             MyAPIGateway.Multiplayer.SendMessageToServer(Channel, data);
         }
 
+        // Instead of the vanilla DetonateRequest, see WarheadLogic
+        public static void RequestDetonate(IMyTerminalBlock warhead)
+        {
+            var data = MyAPIGateway.Utilities.SerializeToBinary(
+                new TradeLaneMessage { Kind = MessageKind.Detonate, EntityId = warhead.EntityId }
+            );
+            MyAPIGateway.Multiplayer.SendMessageToServer(Channel, data);
+        }
+
         static void ApplyLaneInfo(TradeLaneMessage message)
         {
             // The computer itself, when it is streamed in, only turns its grid
@@ -459,6 +471,13 @@ namespace Psycho.TradeLanes
                 {
                     if (IsServer)
                         RunCommand(sender, message.Text);
+                    return;
+                }
+
+                if (message.Kind == MessageKind.Detonate)
+                {
+                    if (IsServer)
+                        Detonate(message.EntityId, sender);
                     return;
                 }
 
@@ -579,6 +598,20 @@ namespace Psycho.TradeLanes
                     },
                     sender
                 );
+        }
+
+        // The checks of the vanilla DetonateRequest: access to the block, armed
+        static void Detonate(long warheadId, ulong sender)
+        {
+            var warhead = Entity(warheadId) as IMyWarhead;
+            var identity = MyAPIGateway.Players.TryGetIdentityId(sender);
+            if (warhead == null || !warhead.IsArmed || !warhead.HasPlayerAccess(identity))
+                return;
+            CustomGridLogic.DropOutThen(
+                warhead.CubeGrid,
+                "a warhead was detonated",
+                warhead.Detonate
+            );
         }
 
         static IMyEntity Entity(long id)

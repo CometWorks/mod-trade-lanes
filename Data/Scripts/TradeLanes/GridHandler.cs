@@ -192,6 +192,7 @@ namespace Psycho.TradeLanes
             // A ship closed mid-trip keeps its trip and its seat lock: it may be
             // going on on another server of a cluster
             TradeLaneComputerBlockLogic.GridIgnore.Remove(Grid);
+            UnwatchAll();
             StopSoundEmitter(ShipSoundEmitter, true);
             RemoveSoundEmitter(ref ShipSoundEmitter);
         }

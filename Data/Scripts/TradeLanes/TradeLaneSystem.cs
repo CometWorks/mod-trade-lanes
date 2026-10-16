@@ -143,11 +143,19 @@ namespace Psycho.TradeLanes
             */
         }
 
+        public override void BeforeStart()
+        {
+            if (TradeLaneNetwork.IsServer)
+                CustomGridLogic.RegisterDamageHandler();
+        }
+
         protected override void UnloadData()
         {
             //base.UnloadData();
             TradeLaneNetwork.Unload();
             LaneRegistry.Unload();
+            WarheadLogic.Unload();
+            CustomGridLogic.Unload();
             Instance = null;
         }
 
@@ -157,7 +165,10 @@ namespace Psycho.TradeLanes
         {
             TradeLaneNetwork.Update();
             if (TradeLaneNetwork.IsServer)
+            {
                 LaneRegistry.Update();
+                CustomGridLogic.UpdateSettling();
+            }
 
             if (!DoOnce)
             {
