@@ -105,6 +105,7 @@ namespace Psycho.TradeLanes
             };
             ModStore.Save(Grid, TransitKey, Transit);
             TradeLaneComputerBlockLogic.GridIgnore.Add(Grid);
+            WatchGroup();
             Instruct(ShipSystem.TradeLaneFlight);
         }
 
@@ -118,6 +119,7 @@ namespace Psycho.TradeLanes
             // The block is client side state, a reload or another server lost it
             TradeLaneNetwork.SetSeatLock(Transit.SeatLocked, true);
             TradeLaneComputerBlockLogic.GridIgnore.Add(Grid);
+            WatchGroup();
             Instruct(ShipSystem.TradeLaneFlight);
         }
 
@@ -127,6 +129,7 @@ namespace Psycho.TradeLanes
             Transit = null;
             ModStore.Save<TransitState>(Grid, TransitKey, null);
             TradeLaneComputerBlockLogic.GridIgnore.Remove(Grid);
+            UnwatchAll();
             Instruct(state);
             TradeLaneNetwork.SetSeatLock(seatLocked, false);
         }
@@ -144,6 +147,17 @@ namespace Psycho.TradeLanes
         {
             if (Grid.Physics == null || !Grid.Physics.Enabled)
                 return;
+
+            if (!WatchGroup())
+            {
+                DropOut("a grid disconnected");
+                return;
+            }
+            if (WarheadAboutToGoOff())
+            {
+                DropOut("a warhead countdown is running out");
+                return;
+            }
 
             var exit = MatrixD.CreateWorld(
                 Transit.ExitPosition,
@@ -166,10 +180,7 @@ namespace Psycho.TradeLanes
 
             if (TradeLaneComputerBlockLogic.CheckIfGridIsInTriggerBox(ref arrivalBox, Grid))
             {
-                SetDampeners();
-                Grid.Physics.LinearVelocity = direction * ExitSpeed;
-                LeaveLane(ShipSystem.TradeLaneDisengage);
-                TradeLaneNetwork.Notify(Grid, "Arrived.");
+                Disengage(direction, "Arrived.");
             }
             else if (kilometers > BreakOffKilometers && !Grid.DampenersEnabled)
             {
@@ -205,6 +216,27 @@ namespace Psycho.TradeLanes
                 $"Distance: {kilometers:F0}Km | Speed: {MeasuredSpeed():F0}",
                 16
             );
+        }
+
+        // Toward the exit ring, the way DriveTransit moves the ship
+        Vector3D LaneDirection()
+        {
+            return Vector3D.Normalize(
+                (Vector3D)Transit.ExitPosition - Grid.PositionComp.WorldAABB.Center
+            );
+        }
+
+        // The ship leaves the lane with the gate's effects, slowing down
+        void Disengage(Vector3D direction, string text)
+        {
+            SetDampeners();
+
+            // Every grid of the ship, or a part that just came off rams the rest
+            foreach (var grid in Watched)
+                if (grid.Physics != null)
+                    grid.Physics.LinearVelocity = direction * ExitSpeed;
+            LeaveLane(ShipSystem.TradeLaneDisengage);
+            TradeLaneNetwork.Notify(Grid, text);
         }
 
         // Brakes the ship at the end of the trip. The pilot can be offline when a
