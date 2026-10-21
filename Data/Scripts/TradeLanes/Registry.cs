@@ -24,6 +24,12 @@ using VRageMath;
 // Deliveries can get lost (a node's handler is not registered yet, a node or
 // the World Authority restarts), so every node reports all its computers and
 // asks for the whole registry again every RefreshFrames.
+//
+// The rings of a lane are RingInterval (10 km) apart, far outside the station's
+// partition, so a ship at a ring is in a partition of its own that the cluster
+// can place on any node, and a node sees only the grids it loads. So every node
+// docks the ships it has at the rings of each paired lane whose computer is not
+// loaded there, through a stand-in built from the registry (StandIns).
 
 namespace Psycho.TradeLanes
 {
@@ -135,6 +141,13 @@ namespace Psycho.TradeLanes
         static readonly Dictionary<long, string> ClientSent = new Dictionary<long, string>();
         static string PendingForget;
 
+        // Node side: the stand-ins docking ships here, by computer id, and the lane info they have
+        static readonly Dictionary<long, TradeLaneComputerBlockLogic> StandInLanes =
+            new Dictionary<long, TradeLaneComputerBlockLogic>();
+        static readonly Dictionary<long, string> StandInApplied = new Dictionary<long, string>();
+
+        public static IEnumerable<TradeLaneComputerBlockLogic> StandIns => StandInLanes.Values;
+
         // World Authority side
         static bool IsAuthority;
         static RegistryStore Store = new RegistryStore();
@@ -160,6 +173,10 @@ namespace Psycho.TradeLanes
                 set.Clear();
             Reported.Clear();
             ClientSent.Clear();
+            foreach (var lane in StandInLanes.Values)
+                lane.Close();
+            StandInLanes.Clear();
+            StandInApplied.Clear();
             Dirty.Clear();
             PendingRemoved.Clear();
             Removed.Clear();
@@ -178,6 +195,9 @@ namespace Psycho.TradeLanes
                 Request(Local.Keys.ToList(), true);
             }
 
+            if (Active && !IsAuthority)
+                UpdateStandIns();
+
             if (Frame % FlushFrames != 0)
                 return;
 
@@ -195,6 +215,7 @@ namespace Psycho.TradeLanes
         public static void Report(LaneEntry entry)
         {
             Local[entry.Id] = entry;
+            DropStandIn(entry.Id);
             string key;
             if (!Reported.TryGetValue(entry.Id, out key) || key != entry.ReportKey())
                 Dirty.Add(entry.Id);
@@ -299,6 +320,63 @@ namespace Psycho.TradeLanes
             };
         }
 
+        static void UpdateStandIns()
+        {
+            if (Frame % FlushFrames == 0)
+                SyncStandIns();
+
+            foreach (var lane in StandInLanes.Values)
+            {
+                lane.UpdateAfterSimulation();
+                if (Frame % 100 == 0)
+                    lane.UpdateAfterSimulation100();
+            }
+        }
+
+        // A stand-in for every paired lane whose computer is not loaded here
+        static void SyncStandIns()
+        {
+            foreach (var entry in Known.Values)
+            {
+                var info = Local.ContainsKey(entry.Id) ? null : LaneInfo(entry);
+                if (info == null || !info.Flag)
+                {
+                    DropStandIn(entry.Id);
+                    continue;
+                }
+
+                var key = InfoKey(info);
+                string applied;
+                if (StandInApplied.TryGetValue(entry.Id, out applied) && applied == key)
+                    continue;
+
+                TradeLaneComputerBlockLogic lane;
+                if (!StandInLanes.TryGetValue(entry.Id, out lane))
+                {
+                    lane = new TradeLaneComputerBlockLogic();
+                    lane.InitStandIn();
+                    StandInLanes[entry.Id] = lane;
+                    MyLog.Default.WriteLine($"TradeLanes: docking at computer {entry.Id}'s rings here, it is loaded elsewhere");
+                }
+                lane.ApplyLaneInfo(info);
+                StandInApplied[entry.Id] = key;
+            }
+
+            foreach (var id in StandInLanes.Keys.Where(id => !Known.ContainsKey(id)).ToList())
+                DropStandIn(id);
+        }
+
+        static void DropStandIn(long id)
+        {
+            TradeLaneComputerBlockLogic lane;
+            if (!StandInLanes.TryGetValue(id, out lane))
+                return;
+            lane.Close();
+            StandInLanes.Remove(id);
+            StandInApplied.Remove(id);
+            MyLog.Default.WriteLine($"TradeLanes: no longer docking at computer {id}'s rings here");
+        }
+
         // A client asked for every lane: the ones not loaded here
         public static void SendLaneInfos(ulong to)
         {
@@ -383,11 +461,7 @@ namespace Psycho.TradeLanes
                 if (Local.ContainsKey(entry.Id))
                     continue;
                 var info = LaneInfo(entry);
-                var key =
-                    string.Join(
-                        ",",
-                        info.Vectors.Select(v => v.ToString("0.00", CultureInfo.InvariantCulture))
-                    ) + $"|{info.Flag}|{info.Number}|{info.Text}";
+                var key = InfoKey(info);
                 string sent;
                 var known = ClientSent.TryGetValue(entry.Id, out sent);
                 if (sent == key || (!known && !info.Flag))
@@ -404,6 +478,15 @@ namespace Psycho.TradeLanes
                         new TradeLaneMessage { Kind = MessageKind.LaneInfo, EntityId = id }
                     );
             }
+        }
+
+        // What a lane info says, rounded so float noise is not a change
+        static string InfoKey(TradeLaneMessage info)
+        {
+            return string.Join(
+                    ",",
+                    info.Vectors.Select(v => v.ToString("0.00", CultureInfo.InvariantCulture))
+                ) + $"|{info.Flag}|{info.Number}|{info.Text}";
         }
 
         // The lane info a computer would send, from the registry

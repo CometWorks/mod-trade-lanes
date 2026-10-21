@@ -206,10 +206,17 @@ namespace Psycho.TradeLanes
         // On a client the rings of a lane are drawn by a stand-in: an instance with
         // no block, made from the server's lane info and updated by TradeLaneNetwork.
         // The computer itself is only there while it is within sync distance, and
-        // closing it would take the rings with it.
+        // closing it would take the rings with it. A cluster node docks ships at the
+        // rings of the lanes loaded elsewhere through a stand-in too, see LaneRegistry.
         bool IsStandIn = false;
         MatrixD StandInMatrix;
         long StandInGridId;
+        long StandInComputerId;
+
+        // A node's stand-in looks for a ship at a free ring every this many frames
+        // only, it watches every lane of the cluster
+        const int StandInDetectFrames = 6;
+        int StandInFrame;
 
         MatrixD LaneMatrix => IsStandIn ? StandInMatrix : Block.WorldMatrix;
         long LaneGridId => IsStandIn ? StandInGridId : Block.CubeGrid.EntityId;
@@ -1523,6 +1530,8 @@ namespace Psycho.TradeLanes
                 if (!HasTarget)
                     return;
 
+                StandInFrame++;
+
                 // A ship in transit drives itself, see Transit.cs
                 TriggerActivators();
 
@@ -1601,13 +1610,7 @@ namespace Psycho.TradeLanes
                     Block.CubeGrid.CustomName = "TL " + id + " " + from + " > " + to;
                 }
 
-                // The documented Speed setting, SetupSystems used to read it but returns early
-                float superluminalSpeed;
-                var speed = ReadCustomData(CustomData, TradeLaneSpeedKeyword, TradeLaneSeparator);
-                SuperluminalSpeed = float.TryParse(speed, out superluminalSpeed)
-                    ? MathHelper.Clamp(superluminalSpeed, 500f, 500000f)
-                    : DefaultSuperluminalSpeed;
-
+                ReadSpeed();
                 ReadRingInterval();
 
                 if (SafeZoneEnabled)
@@ -2247,7 +2250,7 @@ namespace Psycho.TradeLanes
                         var laneMatrix = gate.WorldMatrix;
                         Quaternion.CreateFromRotationMatrix(ref laneMatrix, out DetectBoundingBox.Orientation);
                         //DrawOBB(DetectBoundingBox, color);
-                        if (TradeLaneNetwork.IsServer)
+                        if (TradeLaneNetwork.IsServer && (!IsStandIn || StandInDue(gate, i)))
                             DockingHandler(gate);
                     }
                 }
@@ -4125,18 +4128,35 @@ namespace Psycho.TradeLanes
             return false;
         }
 
-        // Server: true if a lane computer has this grid in its waiting line
+        // A node's stand-in: a ring with a ship in its waiting line every frame, a free one
+        // every StandInDetectFrames, the rings in turn
+        bool StandInDue(MyEntity gate, int index)
+        {
+            LaneData data;
+            return (LaneDataDict.TryGetValue(gate, out data) && data.GridInWaitingLine != null)
+                || (StandInFrame + index) % StandInDetectFrames == 0;
+        }
+
+        // Server: true if a lane computer, or a node's stand-in, has this grid in its waiting line
         static bool IsDockingAnywhere(MyCubeGrid grid)
         {
             foreach (var block in TradeLanes)
             {
                 var logic = block.GameLogic?.GetAs<TradeLaneComputerBlockLogic>();
-                if (logic == null)
-                    continue;
-                foreach (var data in logic.LaneDataDict.Values)
-                    if (data.GridInWaitingLine == grid)
-                        return true;
+                if (logic != null && logic.IsDocking(grid))
+                    return true;
             }
+            foreach (var lane in LaneRegistry.StandIns)
+                if (lane.IsDocking(grid))
+                    return true;
+            return false;
+        }
+
+        bool IsDocking(MyCubeGrid grid)
+        {
+            foreach (var data in LaneDataDict.Values)
+                if (data.GridInWaitingLine == grid)
+                    return true;
             return false;
         }
 
@@ -5493,6 +5513,16 @@ namespace Psycho.TradeLanes
             grid.GameLogic.GetAs<CustomGridLogic>()?.Instruct(state);
         }
 
+        // The documented Speed setting, SetupSystems used to read it but returns early
+        void ReadSpeed()
+        {
+            float superluminalSpeed;
+            var speed = ReadCustomData(CustomData, TradeLaneSpeedKeyword, TradeLaneSeparator);
+            SuperluminalSpeed = float.TryParse(speed, out superluminalSpeed)
+                ? MathHelper.Clamp(superluminalSpeed, 500f, 500000f)
+                : DefaultSuperluminalSpeed;
+        }
+
         void ReadRingInterval()
         {
             float ringInterval;
@@ -5684,7 +5714,8 @@ namespace Psycho.TradeLanes
                 TradeLaneNetwork.SendLaneInfo(LaneInfoMessage(), to);
         }
 
-        // Client side: makes this a stand-in drawing the rings of a lane
+        // Makes this a stand-in: on a client it draws the rings of a lane, on a cluster
+        // node it docks the ships that node has at them
         public void InitStandIn()
         {
             IsStandIn = true;
@@ -5695,7 +5726,8 @@ namespace Psycho.TradeLanes
             TradeLane_Ring_Model = modPath + TradeLane_Ring_Model;
         }
 
-        // Client side: the server told where the lane starts and leads
+        // Where the lane starts and leads: on a client from the server, on a cluster
+        // node's stand-in from the lane registry
         public void ApplyLaneInfo(TradeLaneMessage message)
         {
             var v = message.Vectors;
@@ -5713,9 +5745,11 @@ namespace Psycho.TradeLanes
 
             StandInMatrix = MatrixD.CreateWorld(new Vector3D(v[9], v[10], v[11]), new Vector3D(v[12], v[13], v[14]), new Vector3D(v[15], v[16], v[17]));
             StandInGridId = message.OtherId;
+            StandInComputerId = message.EntityId;
             if (message.Text != CustomData)
             {
                 CustomData = message.Text ?? "";
+                ReadSpeed();
                 ReadRingInterval();
                 UpdateGates();
             }
@@ -5726,8 +5760,9 @@ namespace Psycho.TradeLanes
         {
             int index = LaneGates.IndexOf(gate);
             GateEffect(index, grid, kind);
-            if (Block != null)
-                TradeLaneNetwork.SendGateEffect(Block.EntityId, index, grid, kind);
+            var computerId = Block?.EntityId ?? StandInComputerId;
+            if (computerId != 0)
+                TradeLaneNetwork.SendGateEffect(computerId, index, grid, kind);
         }
 
         public void GateEffect(int gateIndex, MyCubeGrid grid, GateEffectKind kind)
