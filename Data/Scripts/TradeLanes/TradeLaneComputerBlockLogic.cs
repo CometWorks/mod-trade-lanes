@@ -279,6 +279,21 @@ namespace Psycho.TradeLanes
 
         List<MyEntity> LaneGates = new List<MyEntity>();
         List<MyEntity> LaneGatesParts1 = new List<MyEntity>();
+
+        // Client log of what this stand-in draws (TradeLaneNetwork counts them)
+        public int RingCount => LaneGates.Count;
+
+        // A ring entity closed from outside is never rebuilt by UpdateRings: drop them all so it builds anew
+        bool HasClosedRing()
+        {
+            foreach (var ent in LaneGates)
+                if (ent == null || ent.Closed || ent.MarkedForClose)
+                    return true;
+            foreach (var ent in LaneGatesParts1)
+                if (ent == null || ent.Closed || ent.MarkedForClose)
+                    return true;
+            return false;
+        }
         List<MyEntity> LaneGatesParts2 = new List<MyEntity>();
         List<MyEntity> LaneGatesParts3 = new List<MyEntity>();
         //HashSet<Vector3D> LaneGatePoints = new HashSet<Vector3D>();
@@ -818,6 +833,11 @@ namespace Psycho.TradeLanes
             {
                 if (IsStandIn)
                 {
+                    if (HasClosedRing())
+                    {
+                        DeleteEntities(ref LaneGates);
+                        DeleteEntities(ref LaneGatesParts1);
+                    }
                     if (GateUpdateFrame > 0 && --GateUpdateFrame <= 0)
                         UpdateGates();
                     if (HasTarget)
