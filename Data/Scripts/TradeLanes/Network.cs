@@ -95,8 +95,16 @@ namespace Psycho.TradeLanes
         // and stays on the client's HUD this long after the last one
         const int StatusLifetimeMs = 300;
 
-        // A client asks for every lane on these frames after the session starts
+        // A client asks for every lane on these frames after the session starts,
         static readonly int[] LaneRequestFrames = { 120, 1200 };
+
+        // and again this often: a reply lost while the gateway moves the client to another node
+        // (or any other loss) would otherwise leave that lane undrawn for the rest of the session
+        const int LaneRefreshFrames = 1800;
+
+        // The client logs its lane and ring counts when they change, checked this often
+        const int LaneLogFrames = 600;
+        static int LoggedLanes = -1, LoggedRings = -1;
 
         const string UseControl = "USE";
 
@@ -122,6 +130,18 @@ namespace Psycho.TradeLanes
             MyAPIGateway.Utilities.MessageEnteredSender += OnChat;
         }
 
+        static void LogClientLanes()
+        {
+            int rings = 0;
+            foreach (var lane in ClientLanes.Values)
+                rings += lane.RingCount;
+            if (ClientLanes.Count == LoggedLanes && rings == LoggedRings)
+                return;
+            LoggedLanes = ClientLanes.Count;
+            LoggedRings = rings;
+            MyLog.Default.WriteLine($"TradeLanes: client lanes {LoggedLanes} rings {LoggedRings}");
+        }
+
         public static void Unload()
         {
             MyAPIGateway.Multiplayer.UnregisterSecureMessageHandler(Channel, OnMessage);
@@ -129,6 +149,7 @@ namespace Psycho.TradeLanes
             foreach (var lane in ClientLanes.Values)
                 lane.Close();
             ClientLanes.Clear();
+            LoggedLanes = LoggedRings = -1;
             StatusSentAt.Clear();
             StatusText = null;
 
@@ -154,8 +175,12 @@ namespace Psycho.TradeLanes
             if (IsServer)
                 return;
 
-            if (Array.IndexOf(LaneRequestFrames, Frame) >= 0)
+            if (Array.IndexOf(LaneRequestFrames, Frame) >= 0
+                || Frame > LaneRequestFrames[LaneRequestFrames.Length - 1] && Frame % LaneRefreshFrames == 0)
                 RequestLaneInfo(0);
+
+            if (Frame % LaneLogFrames == 0)
+                LogClientLanes();
 
             foreach (var lane in ClientLanes.Values)
             {
