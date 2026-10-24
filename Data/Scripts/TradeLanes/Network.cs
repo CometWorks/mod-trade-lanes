@@ -235,6 +235,12 @@ namespace Psycho.TradeLanes
             );
         }
 
+        // A distance for the players: whole kilometers, rounded
+        public static string Km(double meters)
+        {
+            return $"{Math.Round(meters / 1000, MidpointRounding.AwayFromZero):F0} km";
+        }
+
         // Shows a HUD notification, or a chat line when sender is given, to the
         // players aboard the grid. A 16 ms notification is a status line the caller
         // repeats every frame.
