@@ -123,6 +123,7 @@ namespace Psycho.TradeLanes
         string TradeLaneRingScaleKeyword = "RingSize";
         string TradeLaneComputerSafeZoneRadiusKeyword = "SafeZoneRadius";
         string TradeLaneRingInvisibleModelsKeyword = "RenderRings";
+        string TradeLaneGpsMarkersKeyword = "GpsMarkers";
 
         float AntennaRange = 550f;
         string AntennaHudText = "Trade Lane Id:";
@@ -2298,7 +2299,7 @@ namespace Psycho.TradeLanes
                     }
                 }
 
-                if (updateGps)
+                if (updateGps && GpsMarkersOn())
                 {
                     //var customData = Block.CustomData;
                     var customData = CustomData;
@@ -2342,6 +2343,13 @@ namespace Psycho.TradeLanes
                 }
                 //return;
             }
+        }
+
+        // "GpsMarkers:false" in the Custom Data keeps the lane off the players' GPS lists
+        private bool GpsMarkersOn()
+        {
+            bool on;
+            return !bool.TryParse(ReadCustomData(CustomData, TradeLaneGpsMarkersKeyword, TradeLaneSeparator), out on) || on;
         }
 
         private class GpsWithDistance
