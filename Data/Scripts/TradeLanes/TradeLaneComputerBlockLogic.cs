@@ -2774,7 +2774,7 @@ namespace Psycho.TradeLanes
                             DistanceUpdateFrame = DistanceUpdateInterval;
                         }
 
-                        TradeLaneNetwork.Notify(grid, $"Docking Stage: {LaneDataDict[gate].GridMergeStage} ({DockStageDistanceDisplay}) | Distance: {TargetDistanceDisplay}", 16);
+                        TradeLaneNetwork.Notify(grid, $"Docking Stage: {LaneDataDict[gate].GridMergeStage} ({TradeLaneNetwork.Km(DockStageDistanceDisplay)}) | Distance: {TradeLaneNetwork.Km(TargetDistanceDisplay)}", 16);
                     }
                 }
             }

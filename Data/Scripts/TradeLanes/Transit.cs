@@ -213,7 +213,7 @@ namespace Psycho.TradeLanes
 
             TradeLaneNetwork.Notify(
                 Grid,
-                $"Distance: {kilometers:F0}Km | Speed: {MeasuredSpeed():F0}",
+                $"Distance: {TradeLaneNetwork.Km(distance)} | Speed: {MeasuredSpeed():F0}",
                 16
             );
         }
