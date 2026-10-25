@@ -2345,11 +2345,11 @@ namespace Psycho.TradeLanes
             }
         }
 
-        // "GpsMarkers:false" in the Custom Data keeps the lane off the players' GPS lists
+        // The lane is on the players' GPS lists only with "GpsMarkers:true" in the Custom Data
         private bool GpsMarkersOn()
         {
             bool on;
-            return !bool.TryParse(ReadCustomData(CustomData, TradeLaneGpsMarkersKeyword, TradeLaneSeparator), out on) || on;
+            return bool.TryParse(ReadCustomData(CustomData, TradeLaneGpsMarkersKeyword, TradeLaneSeparator), out on) && on;
         }
 
         private class GpsWithDistance
