@@ -81,10 +81,6 @@ namespace Psycho.TradeLanes
 
         public bool Dock = false;
 
-        // SE default
-        float LargeShipMaxSpeed = 100f;
-        float SmallShipMaxSpeed = 100f;
-
         //ShipJumpDriveCharging
         //ShipPrototechJumpDriveJumpIn
         //ShipJumpDriveRecharge
@@ -203,9 +199,6 @@ namespace Psycho.TradeLanes
 
             if (Grid == null)
                 return;
-
-            LargeShipMaxSpeed = sessionHandler.LargeShipMaxSpeed;
-            SmallShipMaxSpeed = sessionHandler.SmallShipMaxSpeed;
 
             ShipSoundEmitter = SpawnSoundEmitter(Grid);
 
@@ -382,9 +375,10 @@ namespace Psycho.TradeLanes
                         //LargeShipMaxSpeed = 300f;
                         //SmallShipMaxSpeed = 100f;
 
-                        double forwardSpeedLimit = Grid.GridSizeEnum == MyCubeSize.Large ? LargeShipMaxSpeed : SmallShipMaxSpeed;
-                        double rightSpeedLimit = Grid.GridSizeEnum == MyCubeSize.Large ? LargeShipMaxSpeed : SmallShipMaxSpeed;
-                        double upSpeedLimit = Grid.GridSizeEnum == MyCubeSize.Large ? LargeShipMaxSpeed : SmallShipMaxSpeed;
+                        var limit = sessionHandler.ShipSpeedLimit(Grid.GridSizeEnum == MyCubeSize.Large);
+                        double forwardSpeedLimit = limit;
+                        double rightSpeedLimit = limit;
+                        double upSpeedLimit = limit;
 
                         // Adjust MoveIndicator based on speed limits
                         Vector3 moveIndicator = controller.MoveIndicator;
@@ -418,8 +412,6 @@ namespace Psycho.TradeLanes
                         // Apply the adjusted MoveIndicator indirectly by controlling thrust or forces
                         Vector3D desiredVelocity = Vector3D.ClampToSphere(currentVelocity, forwardSpeedLimit);
                         Vector3D force = (desiredVelocity - currentVelocity) * grid.Physics.Mass;
-
-                        var limit = (Grid.GridSizeEnum == MyCubeSize.Large ? LargeShipMaxSpeed : SmallShipMaxSpeed);
 
                         if (controller.MoveIndicator != Vector3.Zero && currentVelocity.Length() > limit)
                             grid.Physics.AddForce(MyPhysicsForceType.APPLY_WORLD_FORCE, force, null, null);

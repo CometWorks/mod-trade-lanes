@@ -80,6 +80,18 @@ namespace Psycho.TradeLanes
         public float LargeShipMaxSpeed = 100f;
         public float SmallShipMaxSpeed = 100f;
 
+        // The speed a piloted ship is held to. LoadData raises the world's limit so that transit isn't
+        // capped and keeps the old one to enforce instead. A mod that sets the world's limit after that,
+        // as Relative Top Speed does in Init, has taken the limit over, and its value counts.
+        public float ShipSpeedLimit(bool largeGrid)
+        {
+            var environmentDefinition = MyDefinitionManager.Static.EnvironmentDefinition;
+            float current = largeGrid ? environmentDefinition.LargeShipMaxSpeed : environmentDefinition.SmallShipMaxSpeed;
+            if (current != (largeGrid ? LargeGridMaxSpeed : SmallGridMaxSpeed))
+                return current;
+            return largeGrid ? LargeShipMaxSpeed : SmallShipMaxSpeed;
+        }
+
         int updateAtFrame = 0;
 
         private class GpsWithDistance
