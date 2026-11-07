@@ -836,6 +836,10 @@ namespace Psycho.TradeLanes
                 {
                     if (HasClosedRing())
                     {
+                        // A gate's idle effect loops and outlives its gate
+                        foreach (var particle in GateParticles.Values)
+                            RemoveParticleEffects(particle, true);
+                        GateParticles.Clear();
                         DeleteEntities(ref LaneGates);
                         DeleteEntities(ref LaneGatesParts1);
                     }
