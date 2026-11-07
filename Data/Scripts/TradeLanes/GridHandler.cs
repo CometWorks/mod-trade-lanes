@@ -191,6 +191,11 @@ namespace Psycho.TradeLanes
             UnwatchAll();
             StopSoundEmitter(ShipSoundEmitter, true);
             RemoveSoundEmitter(ref ShipSoundEmitter);
+            // The lane effects loop: a client that loses the ship mid-trip (out of sync range,
+            // or moved to another node of a cluster) would draw them where it last saw it until
+            // the next login
+            RemoveParticleEffects(ref ShipParticles);
+            RemoveParticleEffects(ref PathPartciles);
         }
 
         public override void UpdateOnceBeforeFrame()
