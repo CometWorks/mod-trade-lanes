@@ -12,7 +12,7 @@
             <Prerequisites>
                 <Item Amount="1" TypeId="Ingot" SubtypeId="Iron" />
             </Prerequisites>
-            <Result Amount="1" TypeId="Component" SubtypeId="Construction" />
+            <Result Amount="1" TypeId="Component" SubtypeId="Unknown" />
             <BaseProductionTimeInSeconds>1</BaseProductionTimeInSeconds>
             <IsPrimary>true</IsPrimary>
             <Public>false</Public>
